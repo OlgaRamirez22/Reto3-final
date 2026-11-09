@@ -1,0 +1,1 @@
+Una OC requiere solicitud, cotización y aprobación. Proveedor, centro de costo, subárea, autoridad, IVA y condiciones se validan contra maestros. Las diferencias se confirman, no se ajustan. Una factura anterior a la solicitud implica una OC retroactiva que se mide y exige confirmación.
