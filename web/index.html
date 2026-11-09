@@ -1,1 +1,29 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Órdenes de Compra SAP</title><style>body{margin:0;background:#f3f7f4;color:#102318;font:15px system-ui,sans-serif}main{max-width:850px;margin:0 auto;padding:24px}h1{color:#15601d}.chat{height:55vh;overflow:auto;background:#fff;border:1px solid #d5e2d7;border-radius:12px;padding:16px}.msg{white-space:pre-wrap;padding:12px;margin:8px 0;border-radius:8px}.user{background:#e2f4e7;margin-left:12%}.assistant{background:#f4f6f5;margin-right:12%}.tools{background:#fff8de;border-left:4px solid #dba400;padding:10px;margin:8px 0;font:12px ui-monospace,monospace}.confirm{border:2px solid #15601d}form{display:flex;gap:8px;margin-top:12px}input{flex:1;padding:12px;border:1px solid #aac4b0;border-radius:8px}button{background:#15601d;color:white;border:0;border-radius:8px;padding:0 18px}</style></head><body><main><h1>Agente de Órdenes de Compra SAP</h1><p>Procesa una solicitud, revisa herramientas y confirma excepciones.</p><section id="chat" class="chat"></section><form id="form"><input id="message" autofocus placeholder="Procesa la solicitud sol-004"><button>Enviar</button></form></main><script>const sessionId=crypto.randomUUID(),chat=document.querySelector('#chat'),form=document.querySelector('#form'),message=document.querySelector('#message');function add(content,role,confirm=false){const el=document.createElement('div');el.className=`msg ${role}${confirm?' confirm':''}`;el.textContent=content;chat.append(el);chat.scrollTop=chat.scrollHeight}form.addEventListener('submit',async(e)=>{e.preventDefault();const text=message.value.trim();if(!text)return;add(text,'user');message.value='';add('Pensando…','assistant');const loading=chat.lastChild;try{const res=await fetch('/api/chat',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionId,message:text})});const data=await res.json();loading.remove();add(data.reply,'assistant',data.needsConfirmation);for(const call of data.toolCalls){const el=document.createElement('details');el.className='tools';el.innerHTML=`<summary>${call.name}</summary><pre>${JSON.stringify({argumentos:call.args,resultado:call.result},null,2)}</pre>`;chat.append(el)}}catch{loading.textContent='No fue posible contactar el backend.'}})</script></body></html>
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Órdenes de Compra SAP</title>
+  <style>
+    body{margin:0;background:#f3f7f4;color:#102318;font:15px system-ui,sans-serif}main{max-width:850px;margin:0 auto;padding:24px}h1{color:#15601d}.chat{height:55vh;overflow:auto;background:#fff;border:1px solid #d5e2d7;border-radius:12px;padding:16px}.msg{white-space:pre-wrap;padding:12px;margin:8px 0;border-radius:8px}.user{background:#e2f4e7;margin-left:12%}.assistant{background:#f4f6f5;margin-right:12%}.tools{background:#fff8de;border-left:4px solid #dba400;padding:10px;margin:8px 0;font:12px ui-monospace,monospace}.confirm{border:2px solid #15601d}.status{min-height:20px;color:#45604b}form{display:flex;gap:8px;margin-top:12px}input{flex:1;padding:12px;border:1px solid #aac4b0;border-radius:8px}button{background:#15601d;color:white;border:0;border-radius:8px;padding:0 18px}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Agente de Órdenes de Compra SAP</h1>
+    <p>Procesa una solicitud, revisa herramientas y confirma excepciones.</p>
+    <section id="chat" class="chat" aria-live="polite"></section>
+    <p id="status" class="status" aria-live="polite"></p>
+    <form id="form">
+      <label for="message">Mensaje para el agente</label>
+      <input id="message" autofocus placeholder="Procesa la solicitud sol-004">
+      <button>Enviar</button>
+    </form>
+  </main>
+  <script>
+    const sessionId=crypto.randomUUID(),chat=document.querySelector('#chat'),form=document.querySelector('#form'),message=document.querySelector('#message'),status=document.querySelector('#status');
+    function add(content,role,confirm=false){const el=document.createElement('div');el.className=`msg ${role}${confirm?' confirm':''}`;el.textContent=content;chat.append(el);chat.scrollTop=chat.scrollHeight}
+    form.addEventListener('submit',async(event)=>{event.preventDefault();const text=message.value.trim();if(!text)return;add(text,'user');message.value='';status.textContent='Pensando…';try{const response=await fetch('/api/chat',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionId,message:text})});const data=await response.json();status.textContent=data.needsConfirmation?'Confirmación requerida.':'Listo.';add(data.reply,'assistant',data.needsConfirmation);for(const call of data.toolCalls){const el=document.createElement('details');el.className='tools';el.innerHTML=`<summary>${call.name}</summary><pre>${JSON.stringify({argumentos:call.args,resultado:call.result},null,2)}</pre>`;chat.append(el)}}catch{status.textContent='Error de conexión.';add('No fue posible contactar el backend.','assistant')}})
+  </script>
+</body>
+</html>

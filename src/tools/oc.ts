@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
+import { PDFDocument, StandardFonts } from "pdf-lib"
 import { z } from "zod"
 import { MockSapAdapter } from "../sap/mock"
-import { ordenCompraSchema, solicitudSchema, type OrdenCompra, type Paquete, type Validation } from "../types"
+import { ordenCompraSchema, paqueteSchema, solicitudSchema, type OrdenCompra, type Paquete, type Validation } from "../types"
 
 export type ToolContext = { directory: string; sessionId: string }
 type Provider = { codigo_sap: string; nit: string; nombre: string; condiciones_pago_default: string; indicador_iva_default: string; activo: boolean }
@@ -28,11 +29,13 @@ async function packageFor(caso: string, ctx: ToolContext): Promise<Paquete> {
   return { correo: { id: correo.id, de: correo.de, asunto: correo.asunto, fecha: correo.fecha }, solicitud, cotizacion, aprobacion, factura }
 }
 async function validate(_caso: string, paquete: Paquete, ctx: ToolContext): Promise<Validation> {
-  const proveedores = await load<Provider[]>(root(ctx, "proveedores.json")); const centros = await load<Centro[]>(root(ctx, "centros-costo.json")); const bloqueos: string[] = []; const confirmaciones: string[] = []; const derivados: Validation["derivados"] = {}; const solicitud = paquete.solicitud
+  const proveedores = await load<Provider[]>(root(ctx, "proveedores.json")); const centros = await load<Centro[]>(root(ctx, "centros-costo.json")); const ivas = await load<Array<{ codigo: string }>>(root(ctx, "indicadores-iva.json")); const condiciones = await load<Array<{ codigo: string }>>(root(ctx, "condiciones-pago.json")); const bloqueos: string[] = []; const confirmaciones: string[] = []; const derivados: Validation["derivados"] = {}; const solicitud = paqueteSchema.parse(paquete).solicitud
   const proveedor = proveedores.find((item) => (solicitud.proveedor_nit ? item.nit === digits(solicitud.proveedor_nit) : normalize(item.nombre) === normalize(solicitud.proveedor_nombre)))
   if (!proveedor) bloqueos.push("RC1: El proveedor no existe en el maestro."); else if (!proveedor.activo) bloqueos.push("RC1: El proveedor está inactivo."); else { derivados.proveedor = { codigo_sap: proveedor.codigo_sap, nit: proveedor.nit, nombre: proveedor.nombre }; if (!solicitud.indicador_iva) { derivados.indicador_iva = proveedor.indicador_iva_default; confirmaciones.push(`RC6: IVA no informado; se propone ${proveedor.indicador_iva_default}.`) } if (!solicitud.condiciones_pago) derivados.condiciones_pago = proveedor.condiciones_pago_default }
   const centro = centros.find((item) => item.centro_costo === solicitud.centro_costo)
   if (!centro) bloqueos.push("RC4: El centro de costo no existe."); else if (!centro.subareas.includes(solicitud.subarea)) bloqueos.push("RC4: La subárea no pertenece al centro de costo.")
+  if (solicitud.indicador_iva && !ivas.some((item) => item.codigo === solicitud.indicador_iva)) bloqueos.push("El indicador IVA no existe en el maestro.")
+  if (solicitud.condiciones_pago && !condiciones.some((item) => item.codigo === solicitud.condiciones_pago)) bloqueos.push("Las condiciones de pago no existen en el maestro.")
   const aprobador = centro?.aprobadores.find((item) => item.email.toLowerCase() === paquete.aprobacion?.de.toLowerCase())
   if (!paquete.aprobacion || !paquete.aprobacion.aprobado) bloqueos.push("RC2: Falta una aprobación explícita."); else if (!aprobador) bloqueos.push("RC2: El remitente no tiene autoridad para este centro de costo."); else if (solicitud.valor_total > aprobador.tope) bloqueos.push("RC3: El valor supera el tope del aprobador.")
   if (Math.abs(solicitud.cantidad * solicitud.valor_unitario - solicitud.valor_total) > 1) bloqueos.push("RC10: Cantidad por valor unitario no coincide con el total.")
@@ -41,7 +44,7 @@ async function validate(_caso: string, paquete: Paquete, ctx: ToolContext): Prom
   if (paquete.aprobacion && paquete.aprobacion.fecha.slice(0, 10) < solicitud.fecha_solicitud) confirmaciones.push("RC9: La aprobación es anterior a la solicitud.")
   return { apta: bloqueos.length === 0, bloqueos, confirmaciones, derivados, retroactiva }
 }
-async function evidence(caso: string, ctx: ToolContext): Promise<{ ruta: string; sha256: string }> { const raw = await load<{ de: string; para: string; fecha: string; asunto: string; cuerpo: string }>(root(ctx, "solicitudes", caso, "aprobacion.json")); const content = `De: ${raw.de}\nPara: ${raw.para}\nFecha: ${raw.fecha}\nAsunto: ${raw.asunto}\n\n${raw.cuerpo}`; const sha256 = createHash("sha256").update(content).digest("hex"); const dir = root(ctx, "out", caso); await mkdir(dir, { recursive: true }); const ruta = join(dir, "aprobacion.txt"); await writeFile(ruta, `${content}\n\nsha256: ${sha256}\n`); return { ruta: `out/${caso}/aprobacion.txt`, sha256 } }
+async function evidence(caso: string, ctx: ToolContext): Promise<{ ruta: string; pdf: string; sha256: string }> { const raw = await load<{ de: string; para: string; fecha: string; asunto: string; cuerpo: string }>(root(ctx, "solicitudes", caso, "aprobacion.json")); const content = `De: ${raw.de}\nPara: ${raw.para}\nFecha: ${raw.fecha}\nAsunto: ${raw.asunto}\n\n${raw.cuerpo}`; const sha256 = createHash("sha256").update(content).digest("hex"); const dir = root(ctx, "out", caso); await mkdir(dir, { recursive: true }); await writeFile(join(dir, "aprobacion.txt"), `${content}\n\nsha256: ${sha256}\n`); const document = await PDFDocument.create(); const page = document.addPage([595, 842]); const font = await document.embedFont(StandardFonts.Helvetica); page.drawText(content, { x: 48, y: 790, size: 11, font, lineHeight: 16, maxWidth: 500 }); await writeFile(join(dir, "aprobacion.pdf"), await document.save()); return { ruta: `out/${caso}/aprobacion.txt`, pdf: `out/${caso}/aprobacion.pdf`, sha256 } }
 async function appendControl(ctx: ToolContext, data: Record<string, unknown>): Promise<void> { const path = root(ctx, "out", "control.csv"); await mkdir(root(ctx, "out"), { recursive: true }); try { await readFile(path, "utf8") } catch { await writeFile(path, "solicitud_id,resultado,numero_oc,retroactiva,bloqueos,confirmaciones,ts\n") } await writeFile(path, `${[data.solicitud_id, data.resultado, data.numero_oc ?? "", data.retroactiva, JSON.stringify(data.bloqueos), JSON.stringify(data.confirmaciones), new Date().toISOString()].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(",")}\n`, { flag: "a" }) }
 
 export const leer_paquete = { description: "Lee y normaliza todos los archivos disponibles de un caso de solicitud.", args: { caso: z.string().describe("Nombre de la carpeta del caso en solicitudes") }, async execute(args: { caso: string }, ctx: ToolContext) { try { return json(await packageFor(args.caso, ctx)) } catch (cause) { return error(`Paquete inválido o incompleto: ${cause instanceof Error ? cause.message : "error desconocido"}`) } } }

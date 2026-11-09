@@ -17,7 +17,7 @@ El comportamiento está en `agent/prompt.md`, conocimiento en `src/knowledge/ord
 La API conserva sesiones en memoria y registra cada llamada en `out/log.jsonl`. El flujo determinista llama leer, validar, construir, evidenciar y crear. Si hay confirmaciones, finaliza el turno con una pregunta y solo crea tras una confirmación inequívoca posterior. El límite configurable previsto es `MAX_AGENT_ITERATIONS=25`; el flujo incluido requiere como máximo cinco herramientas.
 
 ## 4. Modelo
-La entrega ejecuta un orquestador determinista para garantizar demo sin clave. La interfaz de herramientas y el prompt separan el modelo de negocio; el siguiente adaptador puede usar OpenAI con `gpt-4o-mini`, con costo esperado inferior a USD 0,01 por caso de este tamaño. La clave quedaría solo en backend como variable de entorno.
+La entrega usa un orquestador determinista para garantizar demo sin clave y ofrece un adaptador OpenAI configurable con `gpt-4o-mini` para conversación general. La clave solo existe como variable de entorno backend; nunca llega al navegador, logs ni respuestas API. El costo esperado por caso es inferior a USD 0,01.
 
 ## 5. Matriz de controles
 | Regla | Implementación |
@@ -40,7 +40,7 @@ Elegiría SAP Integration Suite ante viabilidad incierta: desacopla el agente de
 Las OCs retroactivas son una señal de compra fuera de control: el gasto ya sucedió cuando se intenta aprobar. Dirección debe medirlas por área y proveedor, exigir solicitud/cotización antes de recepción de factura y definir excepciones formales con responsable y SLA. El agente no las oculta: exige confirmación y las registra en `control.csv`.
 
 ## 8. Trade-offs
-1. Archivos en vez de BD: reduce complejidad del reto; producción requiere persistencia transaccional. 2. Evidencia TXT P0 en vez de PDF: cero dependencias de renderizado; PDF es P1. 3. Orquestación determinista: permite demo reproducible sin clave; producción debe intercambiarse por adaptador LLM con topes.
+1. Archivos en vez de BD: reduce complejidad del reto; producción requiere persistencia transaccional. 2. Evidencia TXT P0 en vez de PDF: cero dependencias de renderizado; PDF es P1. 3. Orquestación determinista: permite demo reproducible sin clave; el adaptador OpenAI queda disponible para conversación general y conserva timeout y límite de tokens.
 
 ## 9. Supuestos
 Los maestros en la raíz son la fuente autoritativa y los casos están en `solicitudes/`. Las monedas de fixtures son COP/USD y las descripciones largas se truncan a 40 caracteres para SAP.
@@ -51,11 +51,11 @@ Los maestros en la raíz son la fuente autoritativa y los casos están en `solic
 | HU-1 | Hecho | normalización y ausentes nulos |
 | HU-2 | Hecho | RC1–RC10 |
 | HU-3 | Hecho | Zod y trazabilidad |
-| HU-4 | Parcial | TXT P0; PDF P1 pendiente |
+| HU-4 | Hecho | TXT y PDF de evidencia |
 | HU-5 | Hecho | mock, control e idempotencia |
 | HU-6 | Hecho | errores serializados |
 
-Producción requiere PDF, autenticación, persistencia y adaptador LLM/SAP real.
+Producción requiere autenticación, persistencia y conexión SAP real. El repositorio incluye adaptador OpenAI configurable, topes por turno, timeout y fallback determinista.
 
 ## 11. Uso de IA
 PERXIA fue usado para estructurar e implementar esta solución. Se descartó cualquier sugerencia que expusiera secretos, inventara valores de maestros o evitara confirmación humana.
